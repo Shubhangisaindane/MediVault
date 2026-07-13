@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Activity, Mail, Lock, Loader2, AlertCircle } from 'lucide-react';
 import axios from 'axios';
+import { supabase } from "@/lib/supabase";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -102,7 +103,7 @@ export default function LoginPage() {
                 <label htmlFor="password" className="block text-sm font-semibold text-slate-700 dark:text-slate-300">
                   Password
                 </label>
-                <a href="#" className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 hover:underline">
+                <a href="/forgot-password" className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 hover:underline">
                   Forgot Password?
                 </a>
               </div>
@@ -143,46 +144,6 @@ export default function LoginPage() {
             <Link href="/signup" className="font-semibold text-emerald-600 dark:text-emerald-400 hover:underline">
               Create one now
             </Link>
-          </div>
-        </div>
-
-        {/* Developer Seeding Prefill Panel (Trial Evaluator Convenience) */}
-        <div className="mt-8 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-sm">
-          <h3 className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest text-center mb-4">
-            Trial Demo Quick-Fill Accounts
-          </h3>
-          <div className="grid grid-cols-2 gap-3">
-            <button
-              onClick={() => prefillAccount('admin@medivault.com', 'admin123')}
-              className="flex flex-col items-center justify-center p-2 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 hover:border-emerald-500/30 transition-all text-left text-xs active:scale-95"
-            >
-              <span className="font-bold text-slate-800 dark:text-slate-200">System Admin</span>
-              <span className="text-[10px] text-slate-400 mt-0.5">admin@medivault.com</span>
-            </button>
-
-            <button
-              onClick={() => prefillAccount('doctor@medivault.com', 'doctor123')}
-              className="flex flex-col items-center justify-center p-2 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 hover:border-emerald-500/30 transition-all text-left text-xs active:scale-95"
-            >
-              <span className="font-bold text-slate-800 dark:text-slate-200">Doctor Blackwell</span>
-              <span className="text-[10px] text-slate-400 mt-0.5">doctor@medivault.com</span>
-            </button>
-
-            <button
-              onClick={() => prefillAccount('receptionist@medivault.com', 'receptionist123')}
-              className="flex flex-col items-center justify-center p-2 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 hover:border-emerald-500/30 transition-all text-left text-xs active:scale-95"
-            >
-              <span className="font-bold text-slate-800 dark:text-slate-200">Receptionist</span>
-              <span className="text-[10px] text-slate-400 mt-0.5">receptionist@medivault.com</span>
-            </button>
-
-            <button
-              onClick={() => prefillAccount('patient@medivault.com', 'patient123')}
-              className="flex flex-col items-center justify-center p-2 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 hover:border-emerald-500/30 transition-all text-left text-xs active:scale-95"
-            >
-              <span className="font-bold text-slate-800 dark:text-slate-200">Patient Jane Doe</span>
-              <span className="text-[10px] text-slate-400 mt-0.5">patient@medivault.com</span>
-            </button>
           </div>
         </div>
       </div>

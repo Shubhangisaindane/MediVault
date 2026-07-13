@@ -29,6 +29,7 @@ model User {
   sessions             Session[]
   auditEntries         AuditLog[]           @relation("Actor")
   notifications        Notification[]
+  passwordResetTokens  PasswordResetToken[]
   
   // A User can link to a Patient profile or Doctor profile
   patientId            String?              @unique
@@ -253,4 +254,17 @@ model AuditLog {
 
   @@index([entityType, entityId])
   @@index([actorUserId])
+}
+
+model PasswordResetToken {
+  id        String    @id @default(uuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
