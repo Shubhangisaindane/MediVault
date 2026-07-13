@@ -82,6 +82,9 @@ export async function POST(request: Request) {
             address,
             createdById: 'self-signup',
           },
+          include: {
+            userAccount: true, // keeps the return type consistent with existingPatient above (will just be null here)
+          },
         });
       }
 
