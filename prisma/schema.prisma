@@ -5,6 +5,7 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 enum Role {
@@ -30,11 +31,11 @@ model User {
   auditEntries         AuditLog[]           @relation("Actor")
   notifications        Notification[]
   passwordResetTokens  PasswordResetToken[]
-  
+
   // A User can link to a Patient profile or Doctor profile
   patientId            String?              @unique
   patient              Patient?             @relation("PatientAccount", fields: [patientId], references: [id], onDelete: Cascade)
-  
+
   doctorId             String?              @unique
   doctor               Doctor?              @relation("DoctorAccount", fields: [doctorId], references: [id], onDelete: Cascade)
 
@@ -52,6 +53,28 @@ model Session {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+}
+
+model PasswordResetToken {
+  id        String    @id @default(uuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model SystemSetting {
+  id        String   @id @default(uuid())
+  key       String   @unique
+  value     String
+  updatedAt DateTime @updatedAt
+
+  @@index([key])
 }
 
 model Patient {
@@ -254,17 +277,4 @@ model AuditLog {
 
   @@index([entityType, entityId])
   @@index([actorUserId])
-}
-
-model PasswordResetToken {
-  id        String    @id @default(uuid())
-  userId    String
-  tokenHash String    @unique
-  expiresAt DateTime
-  usedAt    DateTime?
-  createdAt DateTime  @default(now())
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId])
 }

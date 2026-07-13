@@ -1,171 +1,171 @@
-import React from 'react';
-import { 
-  Users, 
-  Activity, 
-  CalendarCheck, 
-  DollarSign, 
-  Clock, 
-  FileLock, 
-  AlertCircle 
-} from 'lucide-react';
+import { redirect } from 'next/navigation';
+import Link from 'next/link';
+import { getSessionUser } from '@/lib/auth';
 import { db } from '@/lib/db';
-import AdminCharts from '@/components/AdminCharts';
+import { Role } from '@prisma/client';
+import {
+  Users, Stethoscope, Calendar, DollarSign, UserPlus,
+  Settings, AlertTriangle, Activity, Clock, TrendingUp,
+} from 'lucide-react';
 
-export const revalidate = 0; // Disable static caching so admin always sees fresh database records
+export default async function AdminDashboardPage() {
+  const user = await getSessionUser();
 
-export default async function AdminDashboard() {
-  // 1. Fetch live metrics from database
-  const patientCount = await db.patient.count();
-  const doctorCount = await db.doctor.count();
-  const pendingAppointments = await db.appointmentRequest.count({
-    where: { status: 'PENDING' }
-  });
+  if (!user) redirect('/login');
+  if (user.role !== Role.ADMIN) redirect('/dashboard');
 
-  const billingTotal = await db.invoice.aggregate({
-    _sum: {
-      total: true
-    }
-  });
-  const grossRevenue = billingTotal._sum.total || 0;
+  const startOfMonth = new Date();
+  startOfMonth.setDate(1);
+  startOfMonth.setHours(0, 0, 0, 0);
 
-  // 2. Fetch recent audit logs
-  const recentLogs = await db.auditLog.findMany({
-    take: 5,
-    orderBy: { createdAt: 'desc' },
-    include: {
-      actor: true
-    }
-  });
+  const [
+    patientCount,
+    doctorCount,
+    receptionistCount,
+    newPatientsThisMonth,
+    appointmentsByStatus,
+    revenueAgg,
+    pendingInvoicesAgg,
+    lowStockMedicines,
+    recentAuditLogs,
+  ] = await Promise.all([
+    db.patient.count(),
+    db.doctor.count(),
+    db.user.count({ where: { role: Role.RECEPTIONIST } }),
+    db.patient.count({ where: { createdAt: { gte: startOfMonth } } }),
+    db.appointmentRequest.groupBy({ by: ['status'], _count: { status: true } }),
+    db.invoice.aggregate({ where: { status: 'PAID' }, _sum: { total: true } }),
+    db.invoice.aggregate({ where: { status: 'PENDING' }, _sum: { total: true }, _count: true }),
+    db.medicine.findMany({ where: { stock: { lt: 50 } }, orderBy: { stock: 'asc' }, take: 5 }),
+    db.auditLog.findMany({
+      orderBy: { createdAt: 'desc' },
+      take: 8,
+      include: { actor: { select: { email: true, role: true } } },
+    }),
+  ]);
 
-  const kpis = [
-    {
-      label: 'Registered Patients',
-      value: patientCount,
-      change: 'Active EHR records',
-      icon: <Users className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
-    },
-    {
-      label: 'Medical Staff (Doctors)',
-      value: doctorCount,
-      change: 'Active schedules',
-      icon: <Activity className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
-    },
-    {
-      label: 'Pending Appointments',
-      value: pendingAppointments,
-      change: 'Awaiting receptionist intake',
-      icon: <CalendarCheck className="h-5 w-5 text-amber-500" />
-    },
-    {
-      label: 'Gross Invoiced Fees',
-      value: `$${grossRevenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-      change: 'Billing cycle total',
-      icon: <DollarSign className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
-    }
+  const statusCounts = Object.fromEntries(
+    appointmentsByStatus.map((row) => [row.status, row._count.status])
+  ) as Record<string, number>;
+
+  const totalRevenue = revenueAgg._sum.total || 0;
+  const pendingInvoiceTotal = pendingInvoicesAgg._sum.total || 0;
+  const pendingInvoiceCount = pendingInvoicesAgg._count || 0;
+
+  const statCards = [
+    { label: 'Patients', value: patientCount, icon: Users, sub: `+${newPatientsThisMonth} this month` },
+    { label: 'Doctors', value: doctorCount, icon: Stethoscope, sub: `${receptionistCount} receptionists` },
+    { label: 'Pending Appointments', value: statusCounts.PENDING || 0, icon: Calendar, sub: `${statusCounts.CONFIRMED || 0} confirmed` },
+    { label: 'Revenue Collected', value: `$${totalRevenue.toLocaleString()}`, icon: DollarSign, sub: `$${pendingInvoiceTotal.toLocaleString()} pending (${pendingInvoiceCount})` },
   ];
 
   return (
-    <div className="space-y-8">
-      {/* 1. Header welcome */}
-      <div>
-        <h1 className="text-3xl font-extrabold tracking-tight">Analytics Command Center</h1>
-        <p className="text-slate-500 mt-1">Hospital operational overview and compliance monitoring.</p>
-      </div>
-
-      {/* 2. KPI Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {kpis.map((kpi, idx) => (
-          <div 
-            key={idx} 
-            className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 rounded-2xl flex items-center justify-between"
-          >
-            <div>
-              <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">{kpi.label}</p>
-              <h3 className="text-2xl font-black mt-2 tracking-tight">{kpi.value}</h3>
-              <p className="text-xs text-slate-500 mt-1">{kpi.change}</p>
-            </div>
-            <div className="h-12 w-12 rounded-xl bg-slate-50 dark:bg-slate-950 flex items-center justify-center border border-slate-100 dark:border-slate-800">
-              {kpi.icon}
-            </div>
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 px-6 py-10">
+      <div className="max-w-6xl mx-auto">
+        <div className="flex items-center justify-between mb-8">
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight">Admin Overview</h1>
+            <p className="text-sm text-slate-500 mt-1">Live data from your MediVault database</p>
           </div>
-        ))}
-      </div>
-
-      {/* 3. Charts component */}
-      <AdminCharts />
-
-      {/* 4. Recent Audit Logs Trail */}
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6">
-        <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-4 mb-6">
-          <div className="flex items-center gap-2">
-            <FileLock className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
-            <h3 className="text-lg font-bold">HIPAA Compliance Audit Log Trail</h3>
+          <div className="flex gap-3">
+            <Link
+              href="/dashboard/admin/staff"
+              className="inline-flex items-center gap-2 h-10 px-4 rounded-xl bg-emerald-600 text-sm font-semibold text-white shadow-sm hover:bg-emerald-700 transition-all active:scale-95"
+            >
+              <UserPlus className="h-4 w-4" />
+              Add Doctor / Receptionist
+            </Link>
+            <Link
+              href="/dashboard/admin/settings"
+              className="inline-flex items-center gap-2 h-10 px-4 rounded-xl border border-slate-300 bg-white text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-all active:scale-95 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+            >
+              <Settings className="h-4 w-4" />
+              System Settings
+            </Link>
           </div>
-          <span className="text-xs font-semibold px-3 py-1 bg-rose-500/10 text-rose-600 rounded-full flex items-center gap-1.5">
-            <Clock className="h-3.5 w-3.5" />
-            Live Trace
-          </span>
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm border-collapse">
-            <thead>
-              <tr className="text-slate-400 font-bold border-b border-slate-100 dark:border-slate-800 pb-2">
-                <th className="pb-3 font-semibold text-xs uppercase tracking-wider">Timestamp</th>
-                <th className="pb-3 font-semibold text-xs uppercase tracking-wider">Actor</th>
-                <th className="pb-3 font-semibold text-xs uppercase tracking-wider">Role</th>
-                <th className="pb-3 font-semibold text-xs uppercase tracking-wider">Action</th>
-                <th className="pb-3 font-semibold text-xs uppercase tracking-wider">Modified Target</th>
-                <th className="pb-3 font-semibold text-xs uppercase tracking-wider">Status</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-              {recentLogs.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="py-6 text-center text-slate-400">
-                    <div className="flex flex-col items-center justify-center gap-2">
-                      <AlertCircle className="h-6 w-6 text-slate-300" />
-                      <span>No audits recorded yet. Activity logs spawn on user actions.</span>
+        {/* Stat Cards */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 mb-8">
+          {statCards.map((card) => (
+            <div
+              key={card.label}
+              className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-sm"
+            >
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-500/10 dark:bg-emerald-500/5 text-emerald-600 dark:text-emerald-400">
+                  <card.icon className="h-5 w-5" />
+                </div>
+              </div>
+              <div className="text-2xl font-bold tracking-tight">{card.value}</div>
+              <div className="text-sm text-slate-500 mt-0.5">{card.label}</div>
+              <div className="text-xs text-slate-400 mt-1.5">{card.sub}</div>
+            </div>
+          ))}
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Low Stock Alerts */}
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-sm">
+            <div className="flex items-center gap-2 mb-4">
+              <AlertTriangle className="h-4 w-4 text-amber-500" />
+              <h2 className="font-bold text-sm uppercase tracking-wide text-slate-500">Low Stock Medicines</h2>
+            </div>
+            {lowStockMedicines.length === 0 ? (
+              <p className="text-sm text-slate-400">All inventory levels are healthy.</p>
+            ) : (
+              <ul className="space-y-3">
+                {lowStockMedicines.map((med) => (
+                  <li key={med.id} className="flex items-center justify-between text-sm">
+                    <span className="font-medium text-slate-700 dark:text-slate-300">{med.name}</span>
+                    <span className="text-amber-600 dark:text-amber-400 font-semibold">{med.stock} units left</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+
+          {/* Recent Activity */}
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-sm">
+            <div className="flex items-center gap-2 mb-4">
+              <Activity className="h-4 w-4 text-emerald-500" />
+              <h2 className="font-bold text-sm uppercase tracking-wide text-slate-500">Recent Activity</h2>
+            </div>
+            {recentAuditLogs.length === 0 ? (
+              <p className="text-sm text-slate-400">No activity logged yet.</p>
+            ) : (
+              <ul className="space-y-3">
+                {recentAuditLogs.map((log) => (
+                  <li key={log.id} className="flex items-start gap-2.5 text-sm">
+                    <Clock className="h-3.5 w-3.5 text-slate-400 mt-0.5 shrink-0" />
+                    <div>
+                      <span className="font-medium text-slate-700 dark:text-slate-300">{log.actor.email}</span>
+                      <span className="text-slate-500"> — {log.action.replace(/_/g, ' ').toLowerCase()} </span>
+                      <span className="text-slate-400 text-xs">
+                        ({new Date(log.createdAt).toLocaleString()})
+                      </span>
                     </div>
-                  </td>
-                </tr>
-              ) : (
-                recentLogs.map((log) => (
-                  <tr key={log.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-900/50 transition-colors">
-                    <td className="py-4 font-medium text-slate-500 text-xs">
-                      {log.createdAt.toLocaleString()}
-                    </td>
-                    <td className="py-4 font-bold text-slate-800 dark:text-slate-100">
-                      {log.actor.email}
-                    </td>
-                    <td className="py-4">
-                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
-                        {log.actor.role}
-                      </span>
-                    </td>
-                    <td className="py-4">
-                      <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
-                        log.action === 'SIGNUP' || log.action === 'LOGIN' 
-                          ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400' 
-                          : 'bg-indigo-500/10 text-indigo-700 dark:text-indigo-400'
-                      }`}>
-                        {log.action}
-                      </span>
-                    </td>
-                    <td className="py-4 text-xs font-mono text-slate-400">
-                      {log.entityType} ({log.entityId.slice(0, 8)}...)
-                    </td>
-                    <td className="py-4">
-                      <span className="flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-400 font-semibold">
-                        <span className="h-2 w-2 rounded-full bg-emerald-500" />
-                        SUCCESS
-                      </span>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
+
+        {/* Appointment Status Breakdown */}
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-sm mt-6">
+          <div className="flex items-center gap-2 mb-4">
+            <TrendingUp className="h-4 w-4 text-emerald-500" />
+            <h2 className="font-bold text-sm uppercase tracking-wide text-slate-500">Appointment Status</h2>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            {['PENDING', 'CONFIRMED', 'COMPLETED', 'CANCELLED'].map((status) => (
+              <div key={status} className="text-center p-3 rounded-xl bg-slate-50 dark:bg-slate-950">
+                <div className="text-xl font-bold">{statusCounts[status] || 0}</div>
+                <div className="text-xs text-slate-500 mt-0.5">{status}</div>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     </div>

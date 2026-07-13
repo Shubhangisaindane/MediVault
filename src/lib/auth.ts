@@ -1,6 +1,7 @@
 import argon2 from 'argon2';
 import crypto from 'crypto';
 import { cookies } from 'next/headers';
+import { cache } from 'react';
 import { db } from './db';
 import { Role } from '@prisma/client';
 
@@ -55,7 +56,10 @@ export async function createSession(userId: string): Promise<string> {
   return token;
 }
 
-export async function getSessionUser(): Promise<SessionUser | null> {
+// Wrapped in React's cache() so multiple calls within the same server
+// request (e.g. layout.tsx + page.tsx both calling getSessionUser)
+// share a single DB query instead of firing one each.
+export const getSessionUser = cache(async (): Promise<SessionUser | null> => {
   try {
     const cookieStore = await cookies();
     const token = cookieStore.get('session')?.value;
@@ -119,7 +123,7 @@ export async function getSessionUser(): Promise<SessionUser | null> {
     console.error('Error fetching session user:', error);
     return null;
   }
-}
+});
 
 export async function destroySession(): Promise<void> {
   try {

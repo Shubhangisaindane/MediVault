@@ -38,6 +38,23 @@ export async function GET(request: Request) {
       where.sex = sex;
     }
 
+    // RBAC: doctors only see patients they've actually treated or have a
+    // pending/confirmed booking with — not the full directory.
+    if (sessionUser.role === 'DOCTOR') {
+      if (!sessionUser.doctorId) {
+        return NextResponse.json({ error: 'Doctor account profile not linked' }, { status: 400 });
+      }
+
+      where.AND = [
+        {
+          OR: [
+            { appointmentRequests: { some: { doctorId: sessionUser.doctorId } } },
+            { visits: { some: { doctorId: sessionUser.doctorId } } },
+          ],
+        },
+      ];
+    }
+
     // Fetch patients and total count
     const [patients, total] = await db.$transaction([
       db.patient.findMany({

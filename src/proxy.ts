@@ -1,12 +1,7 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import crypto from 'crypto';
-
-// Minimal database utility since we cannot import React-tainted files easily in next.js routing filters
-// Using dynamic imports for database check or a simplified fetch can work, 
-// but since proxy.ts is standard Node.js, we can import Prisma client directly.
-import { PrismaClient } from '@prisma/client';
-const prisma = new PrismaClient();
+import { db } from '@/lib/db';
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -31,7 +26,7 @@ export async function proxy(request: NextRequest) {
     try {
       // Hash token to look it up in DB
       const tokenHash = crypto.createHash('sha256').update(sessionToken).digest('hex');
-      const session = await prisma.session.findUnique({
+      const session = await db.session.findUnique({
         where: { tokenHash },
         include: { user: true },
       });
@@ -41,7 +36,7 @@ export async function proxy(request: NextRequest) {
         userRole = session.user.role;
       } else if (session) {
         // Delete expired session
-        await prisma.session.delete({ where: { id: session.id } });
+        await db.session.delete({ where: { id: session.id } });
       }
     } catch (err) {
       console.error('Proxy session check error:', err);

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getSessionUser } from '@/lib/auth';
+import { createNotification } from '@/lib/notifications';
 
 // Helper to map weekday number to name
 const weekdays = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -81,7 +82,7 @@ export async function POST(request: Request) {
     }
 
     const docAvailability = doctor.availability as Record<string, string[]>;
-    
+
     // CONFLICT DETECTION 1: Check if doctor is working on that weekday
     if (!docAvailability || !docAvailability[weekdayName]) {
       return NextResponse.json({ 
@@ -119,7 +120,8 @@ export async function POST(request: Request) {
           preferredDate: finalDate,
           reason,
           status: sessionUser.role === 'RECEPTIONIST' ? 'CONFIRMED' : 'PENDING'
-        }
+        },
+        include: { patient: true, doctor: true }
       });
 
       // Write audit log
@@ -135,6 +137,18 @@ export async function POST(request: Request) {
 
       return createdAppt;
     });
+
+    // Notify the doctor's linked portal account, if one exists.
+    // Doctor doesn't have a userId field directly — User holds doctorId,
+    // so we look it up via the reverse relation.
+    const doctorUser = await db.user.findUnique({ where: { doctorId: appt.doctorId } });
+    if (doctorUser) {
+      await createNotification({
+        userId: doctorUser.id,
+        title: appt.status === 'CONFIRMED' ? 'New Appointment Booked' : 'New Appointment Request',
+        message: `${appt.patient.firstName} ${appt.patient.lastName} requested a booking for ${finalDate.toLocaleDateString('en-US')}.`,
+      });
+    }
 
     return NextResponse.json({ success: true, appointment: appt });
   } catch (error: any) {
@@ -179,7 +193,7 @@ export async function PUT(request: Request) {
     const data: any = {};
     if (status) data.status = status;
     if (staffNote !== undefined) data.staffNote = staffNote;
-    
+
     if (preferredDate) {
       const finalDate = new Date(preferredDate);
       finalDate.setHours(12, 0, 0, 0);
@@ -207,6 +221,33 @@ export async function PUT(request: Request) {
       // If status is updated to COMPLETED, let's auto-create a clinical visit log structure or billing draft if needed!
       return result;
     });
+
+    // Notify whichever side didn't make the change, via their linked portal account.
+    if (status === 'CONFIRMED' || status === 'CANCELLED') {
+      const dateStr = updated.preferredDate.toLocaleDateString('en-US');
+
+      if (sessionUser.role === 'PATIENT') {
+        // Patient cancelled — notify the doctor's account.
+        const doctorUser = await db.user.findUnique({ where: { doctorId: updated.doctorId } });
+        if (doctorUser) {
+          await createNotification({
+            userId: doctorUser.id,
+            title: 'Appointment Cancelled',
+            message: `${updated.patient.firstName} ${updated.patient.lastName} cancelled their appointment on ${dateStr}.`,
+          });
+        }
+      } else {
+        // Receptionist/doctor/admin confirmed or cancelled — notify the patient's account.
+        const patientUser = await db.user.findUnique({ where: { patientId: updated.patientId } });
+        if (patientUser) {
+          await createNotification({
+            userId: patientUser.id,
+            title: status === 'CONFIRMED' ? 'Appointment Confirmed' : 'Appointment Cancelled',
+            message: `Your appointment with Dr. ${updated.doctor.lastName} on ${dateStr} was ${status.toLowerCase()}.`,
+          });
+        }
+      }
+    }
 
     return NextResponse.json({ success: true, appointment: updated });
   } catch (error: any) {

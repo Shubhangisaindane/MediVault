@@ -35,13 +35,34 @@ type ShellProps = {
   };
 };
 
+type Notification = {
+  id: string;
+  title: string;
+  message: string;
+  isRead: boolean;
+  createdAt: string;
+};
+
+// Turns a createdAt timestamp into "Just now" / "10m ago" / "1h ago" / "2d ago"
+function timeAgo(dateStr: string): string {
+  const diffMs = Date.now() - new Date(dateStr).getTime();
+  const diffMin = Math.floor(diffMs / 60000);
+  if (diffMin < 1) return 'Just now';
+  if (diffMin < 60) return `${diffMin}m ago`;
+  const diffHr = Math.floor(diffMin / 60);
+  if (diffHr < 24) return `${diffHr}h ago`;
+  const diffDay = Math.floor(diffHr / 24);
+  return `${diffDay}d ago`;
+}
+
 export default function DashboardShell({ children, user }: ShellProps) {
   const pathname = usePathname();
   const router = useRouter();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
   const [darkMode, setDarkMode] = useState(false);
-  const [notifications, setNotifications] = useState<any[]>([]);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
 
   // Toggle Dark Mode
   useEffect(() => {
@@ -65,22 +86,25 @@ export default function DashboardShell({ children, user }: ShellProps) {
     }
   };
 
-  // Fetch mock notifications
-  useEffect(() => {
-    // Dynamic mock notifications based on role
-    const mockNotifs = [
-      { id: '1', title: 'Welcome to MediVault', message: 'Explore your electronic healthcare records portal.', time: 'Just now', isRead: false },
-    ];
-    if (user.role === 'ADMIN') {
-      mockNotifs.push({ id: '2', title: 'Audit Alert', message: 'User role changes were logged by receptionist.', time: '10m ago', isRead: false });
-    } else if (user.role === 'DOCTOR') {
-      mockNotifs.push({ id: '2', title: 'New Appointment Booked', message: 'Jane Doe is scheduled for Cardiology today.', time: '1h ago', isRead: false });
-    } else if (user.role === 'RECEPTIONIST') {
-      mockNotifs.push({ id: '2', title: 'Pending Request', message: 'Jane Doe requested a rescheduling for Friday.', time: '5m ago', isRead: false });
-    } else if (user.role === 'PATIENT') {
-      mockNotifs.push({ id: '2', title: 'Prescription Ready', message: 'Dr. Blackwell updated your Paracetamol prescription.', time: '2h ago', isRead: false });
+  // Fetch real notifications from the API
+  const fetchNotifications = async () => {
+    try {
+      const res = await axios.get('/api/notifications');
+      setNotifications(res.data.notifications);
+      setUnreadCount(res.data.unreadCount);
+    } catch (err) {
+      console.error('Failed to fetch notifications:', err);
+      setNotifications([]);
+      setUnreadCount(0);
     }
-    setNotifications(mockNotifs);
+  };
+
+  useEffect(() => {
+    fetchNotifications();
+    // Refresh periodically so "Just now" ages into "5m ago" etc.
+    // and so new real events show up without a full page reload.
+    const interval = setInterval(fetchNotifications, 60_000);
+    return () => clearInterval(interval);
   }, [user.role]);
 
   const handleLogout = async () => {
@@ -122,10 +146,18 @@ export default function DashboardShell({ children, user }: ShellProps) {
   };
 
   const navItems = navItemsByRole[user.role] || [];
-  const unreadCount = notifications.filter(n => !n.isRead).length;
 
-  const markAllRead = () => {
+  const markAllRead = async () => {
+    // Optimistic UI update first, so the badge clears instantly
     setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
+    setUnreadCount(0);
+    try {
+      await axios.post('/api/notifications/mark-read');
+    } catch (err) {
+      console.error('Failed to mark notifications read:', err);
+      // Revert on failure by re-fetching real state
+      fetchNotifications();
+    }
   };
 
   const SidebarContent = () => (
@@ -221,7 +253,10 @@ export default function DashboardShell({ children, user }: ShellProps) {
             {/* Notification Bell */}
             <div className="relative">
               <button
-                onClick={() => setNotifOpen(!notifOpen)}
+                onClick={() => {
+                  setNotifOpen(!notifOpen);
+                  if (!notifOpen) fetchNotifications(); // refresh right as it opens
+                }}
                 className="p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors relative"
               >
                 <Bell className="h-5 w-5" />
@@ -237,19 +272,24 @@ export default function DashboardShell({ children, user }: ShellProps) {
                 <div className="absolute right-0 mt-3 w-80 rounded-2xl border border-slate-200 bg-white shadow-xl dark:border-slate-800 dark:bg-slate-900 z-50 p-4 animate-in fade-in-50 slide-in-from-top-3 duration-200">
                   <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2 mb-3">
                     <span className="font-bold text-sm">Notifications</span>
-                    <button 
-                      onClick={markAllRead} 
-                      className="text-xs text-emerald-600 dark:text-emerald-400 hover:underline font-semibold"
-                    >
-                      Mark read
-                    </button>
+                    {unreadCount > 0 && (
+                      <button 
+                        onClick={markAllRead} 
+                        className="text-xs text-emerald-600 dark:text-emerald-400 hover:underline font-semibold"
+                      >
+                        Mark read
+                      </button>
+                    )}
                   </div>
                   <div className="space-y-3 max-h-60 overflow-y-auto">
+                    {notifications.length === 0 && (
+                      <p className="text-xs text-slate-400 text-center py-4">No notifications</p>
+                    )}
                     {notifications.map((n) => (
                       <div key={n.id} className={`p-2.5 rounded-xl text-xs transition-colors ${n.isRead ? 'opacity-60' : 'bg-emerald-500/5 dark:bg-emerald-400/5'}`}>
                         <div className="flex justify-between font-bold text-slate-800 dark:text-slate-200">
                           <span>{n.title}</span>
-                          <span className="text-[10px] text-slate-400 font-normal">{n.time}</span>
+                          <span className="text-[10px] text-slate-400 font-normal">{timeAgo(n.createdAt)}</span>
                         </div>
                         <p className="text-slate-500 mt-1">{n.message}</p>
                       </div>
