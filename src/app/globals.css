@@ -1,7 +1,15 @@
 @import "tailwindcss";
 
+/*
+ * Theme state is controlled by the `dark` class on <html>. Tailwind v4
+ * otherwise uses the operating system colour preference for `dark:` utilities,
+ * which can leave component foreground and background colours out of sync.
+ */
+@custom-variant dark (&:where(.dark, .dark *));
+
 @layer base {
   :root {
+    color-scheme: light;
     --background: 210 40% 98%; /* slate-50 */
     --foreground: 222 47% 11%; /* slate-900 */
     --card: 0 0% 100%;
@@ -36,6 +44,7 @@
   }
 
   .dark {
+    color-scheme: dark;
     --background: 222 47% 6%; /* deep slate-950 */
     --foreground: 210 40% 98%;
     --card: 222 47% 9%; /* slate-900 */
