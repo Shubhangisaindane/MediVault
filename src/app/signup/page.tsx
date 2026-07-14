@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Activity, Mail, Lock, User, Phone, MapPin, Calendar, Loader2, AlertCircle } from 'lucide-react';
 import axios from 'axios';
+import { normalizeEmail, normalizePhone } from '@/lib/validation';
 
 export default function SignupPage() {
   const router = useRouter();
@@ -23,20 +24,45 @@ export default function SignupPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+  const handleChange = (
+  e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
+) => {
+  const { name, value } = e.target;
+
+  if (name === "phone") {
+    const digitsOnly = value.replace(/\D/g, "").slice(0, 10);
+
     setFormData((prev) => ({
       ...prev,
-      [e.target.name]: e.target.value,
+      phone: digitsOnly,
     }));
-  };
+    return;
+  }
+
+  setFormData((prev) => ({
+    ...prev,
+    [name]: value,
+  }));
+};
 
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
+    const email = normalizeEmail(formData.email);
+    const phone = normalizePhone(formData.phone);
+  
+    if (!email) {
+      setError('Enter a valid email address.');
+      return;
+    }
+    if (formData.phone && !phone) {
+      setError('Enter a valid phone number with 10 digits.');
+      return;
+    }
     setLoading(true);
     setError(null);
 
     try {
-      const response = await axios.post('/api/auth/signup', formData);
+      const response = await axios.post('/api/auth/signup', { ...formData, email, phone });
       if (response.data.success) {
         router.push('/dashboard');
         router.refresh();
@@ -175,7 +201,11 @@ export default function SignupPage() {
                 <input
                   type="tel"
                   name="phone"
-                  placeholder="+1 (555) 000-0000"
+                  inputMode="numeric"
+                  pattern="[0-9]{10}"
+                  maxLength={10}
+                  title="Please enter exactly 10 digits."
+                  placeholder="9876543210"
                   value={formData.phone}
                   onChange={handleChange}
                   className="block w-full pl-10 pr-4 py-2 rounded-xl border border-slate-300 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none text-sm transition-all dark:border-slate-800 dark:bg-slate-950 dark:focus:bg-slate-950"
@@ -214,6 +244,7 @@ export default function SignupPage() {
                   <input
                     type="email"
                     name="email"
+                    autoComplete="email"
                     required
                     placeholder="john.doe@example.com"
                     value={formData.email}

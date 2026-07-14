@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getSessionUser, hashPassword } from '@/lib/auth';
+import { normalizeEmail, normalizePhone } from '@/lib/validation';
 
 // 1. GET - List Doctors (optional specialization/department filters)
 export async function GET(request: Request) {
@@ -54,7 +55,14 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Missing required staff fields' }, { status: 400 });
     }
 
-    const emailLower = email.toLowerCase();
+    const emailLower = normalizeEmail(email);
+    if (!emailLower) {
+      return NextResponse.json({ error: 'Enter a valid email address.' }, { status: 400 });
+    }
+    const normalizedPhone = normalizePhone(phone);
+    if (phone !== undefined && phone !== null && phone !== '' && !normalizedPhone) {
+      return NextResponse.json({ error: 'Enter a valid phone number with 7 to 15 digits.' }, { status: 400 });
+    }
 
     // Check if email already used
     const existing = await db.user.findUnique({ where: { email: emailLower } });
@@ -80,7 +88,7 @@ export async function POST(request: Request) {
           specialization,
           department,
           email: emailLower,
-          phone,
+          phone: normalizedPhone,
           availability: docAvailability,
         }
       });

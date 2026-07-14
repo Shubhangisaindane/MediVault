@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
 import { db } from '@/lib/db';
 import { sendPasswordResetEmail } from '@/lib/email';
+import { normalizeEmail } from '@/lib/validation';
 
 const RESET_TOKEN_TTL_MS = 60 * 60 * 1000; // 1 hour
 
@@ -13,7 +14,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Email is required.' }, { status: 400 });
     }
 
-    const normalizedEmail = email.trim().toLowerCase();
+    const normalizedEmail = normalizeEmail(email);
+    if (!normalizedEmail) {
+      return NextResponse.json({ error: 'Enter a valid email address.' }, { status: 400 });
+    }
 
     // This exact response is returned whether or not the account exists,
     // so the endpoint can't be used to check which emails are registered.
@@ -47,7 +51,15 @@ export async function POST(req: NextRequest) {
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
     const resetLink = `${appUrl}/reset-password?token=${rawToken}`;
 
-    await sendPasswordResetEmail(user.email, resetLink);
+    try {
+      await sendPasswordResetEmail(user.email, resetLink);
+    } catch (emailError) {
+      console.error('password reset email delivery failed:', emailError);
+      return NextResponse.json(
+        { error: 'We could not send the reset email. Please try again shortly or contact support.' },
+        { status: 503 }
+      );
+    }
 
     return genericResponse;
   } catch (err) {

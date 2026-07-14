@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { hashPassword, createSession } from '@/lib/auth';
+import { normalizeEmail, normalizePhone } from '@/lib/validation';
 
 export async function POST(request: Request) {
   try {
@@ -15,7 +16,15 @@ export async function POST(request: Request) {
       );
     }
 
-    const emailLower = email.toLowerCase();
+    const emailLower = normalizeEmail(email);
+    if (!emailLower) {
+      return NextResponse.json({ error: 'Enter a valid email address.' }, { status: 400 });
+    }
+
+    const normalizedPhone = normalizePhone(phone);
+    if (phone !== undefined && phone !== null && phone !== '' && !normalizedPhone) {
+      return NextResponse.json({ error: 'Enter a valid phone number with 7 to 15 digits.' }, { status: 400 });
+    }
 
     // Check if a login already exists for this email
     const existingUser = await db.user.findUnique({
@@ -77,7 +86,7 @@ export async function POST(request: Request) {
             lastName,
             dateOfBirth: new Date(dateOfBirth),
             sex,
-            phone,
+            phone: normalizedPhone,
             email: emailLower,
             address,
             createdById: 'self-signup',

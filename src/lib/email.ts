@@ -13,7 +13,7 @@ const transporter = smtpConfigured
     })
   : null;
 
-export async function sendPasswordResetEmail(to: string, resetLink: string) {
+export async function sendPasswordResetEmail(to: string, resetLink: string): Promise<void> {
   const subject = 'Reset your MediVault password';
   const text = `We received a request to reset your MediVault password.\n\nReset it here (link expires in 1 hour):\n${resetLink}\n\nIf you didn't request this, you can safely ignore this email.`;
   const html = `
@@ -30,9 +30,8 @@ export async function sendPasswordResetEmail(to: string, resetLink: string) {
   `;
 
   if (!transporter) {
-    // No SMTP env vars set yet — log the link so the flow is still testable locally.
-    console.log(`[email:dev-fallback] Password reset link for ${to}:\n${resetLink}`);
-    return;
+    // A reset link must never be exposed outside the recipient's mailbox.
+    throw new Error('Password reset email is not configured.');
   }
 
   await transporter.sendMail({

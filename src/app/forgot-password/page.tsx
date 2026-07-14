@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import Link from 'next/link';
 import { Activity, Mail, Loader2, AlertCircle, CheckCircle2, ArrowLeft } from 'lucide-react';
 import axios from 'axios';
+import { normalizeEmail } from '@/lib/validation';
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState('');
@@ -13,13 +14,19 @@ export default function ForgotPasswordPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    const normalizedEmail = normalizeEmail(email);
+    if (!normalizedEmail) {
+      setError('Enter a valid email address.');
+      return;
+    }
     setLoading(true);
     setError(null);
 
     try {
-      await axios.post('/api/auth/forgot-password', { email });
+      await axios.post('/api/auth/forgot-password', { email: normalizedEmail });
       // Always show the success state, whether or not the account exists,
       // so this form can't be used to check which emails are registered.
+      setEmail(normalizedEmail);
       setSubmitted(true);
     } catch (err: any) {
       setError(err.response?.data?.error || 'Something went wrong. Please try again.');

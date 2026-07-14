@@ -5,6 +5,7 @@ import {
   CreditCard, 
   Plus, 
   Printer, 
+  Download,
   X, 
   Loader2, 
   AlertCircle,
@@ -14,6 +15,7 @@ import {
   FileText
 } from 'lucide-react';
 import axios from 'axios';
+import { downloadDocument, escapeHtml } from '@/lib/document-download';
 
 type Payment = {
   id: string;
@@ -163,10 +165,21 @@ export default function BillingManager({ userRole }: BillingManagerProps) {
     }
   };
 
+  const downloadInvoice = (invoice: Invoice) => {
+    const payments = invoice.payments.length
+      ? invoice.payments.map((payment) => `<tr><td>${escapeHtml(payment.method)}</td><td>${escapeHtml(payment.transactionId || '—')}</td><td class="right">$${payment.amount.toFixed(2)}</td></tr>`).join('')
+      : '<tr><td colspan="3" class="muted">No payment has been recorded.</td></tr>';
+    downloadDocument(
+      `medivault-invoice-${invoice.id.slice(0, 8)}.html`,
+      'MediVault Invoice',
+      `<h1>MediVault Clinic</h1><p class="muted">742 Health Blvd, Medical Center Hub · support@medivault.com</p><h2>Invoice · #${escapeHtml(invoice.id.slice(0, 8).toUpperCase())}</h2><div class="grid"><div><strong>Billed to</strong><br>${escapeHtml(`${invoice.patient.firstName} ${invoice.patient.lastName}`)}<br><span class="muted">MRN: ${escapeHtml(invoice.patient.mrn)}<br>${escapeHtml(invoice.patient.email || invoice.patient.phone || '')}</span></div><div><strong>Due date</strong><br>${escapeHtml(new Date(invoice.dueDate).toLocaleDateString())}<br><span class="muted">Status: ${escapeHtml(invoice.status)}</span></div></div><table><thead><tr><th>Charge</th><th class="right">Amount</th></tr></thead><tbody><tr><td>Clinical Practitioner Consultation Fee</td><td class="right">$${invoice.amount.toFixed(2)}</td></tr></tbody></table><table><tbody><tr><td>Subtotal</td><td class="right">$${invoice.amount.toFixed(2)}</td></tr><tr><td>Tax</td><td class="right">$${invoice.tax.toFixed(2)}</td></tr><tr><td>Discount</td><td class="right">-$${invoice.discount.toFixed(2)}</td></tr><tr class="total"><td>Grand total</td><td class="right">$${invoice.total.toFixed(2)}</td></tr></tbody></table><h2>Payments</h2><table><thead><tr><th>Method</th><th>Reference</th><th class="right">Amount</th></tr></thead><tbody>${payments}</tbody></table>`
+    );
+  };
+
   return (
     <div className="space-y-6">
       {/* 1. Header controls */}
-      <div className="flex justify-between items-center print:hidden">
+      <div className="flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-center print:hidden">
         <div>
           <h1 className="text-2xl font-black tracking-tight">Billing & Invoices</h1>
           <p className="text-slate-500 text-xs mt-0.5">Track financial accounts, review transaction methods, and print billing receipts.</p>
@@ -201,7 +214,26 @@ export default function BillingManager({ userRole }: BillingManagerProps) {
           No billing records in your directory.
         </div>
       ) : (
-        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden shadow-sm print:hidden">
+        <>
+          <div className="space-y-3 md:hidden print:hidden">
+            {invoices.map((inv) => {
+              const isPaid = inv.status === 'PAID';
+              return (
+                <article key={inv.id} className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 space-y-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div><p className="font-mono font-bold text-xs text-slate-500">#{inv.id.slice(0, 8).toUpperCase()}</p><p className="font-bold text-sm text-slate-800 dark:text-slate-100 mt-1">{inv.patient.firstName} {inv.patient.lastName}</p></div>
+                    <span className={`shrink-0 px-2.5 py-1 rounded-full text-[10px] font-bold ${isPaid ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400' : 'bg-rose-500/10 text-rose-600 dark:text-rose-400'}`}>{inv.status}</span>
+                  </div>
+                  <div className="flex items-end justify-between text-xs"><div className="text-slate-500">Due {new Date(inv.dueDate).toLocaleDateString()}</div><div className="font-black text-base text-slate-950 dark:text-slate-50">${inv.total.toFixed(2)}</div></div>
+                  <div className="flex flex-wrap gap-2 pt-1">
+                    <button onClick={() => setActiveInvoice(inv)} className="flex-1 min-w-28 px-3 py-2 bg-emerald-500/10 text-emerald-700 dark:bg-emerald-400/5 dark:text-emerald-400 hover:bg-emerald-600 hover:text-white rounded-lg text-xs font-bold transition-all cursor-pointer">View receipt</button>
+                    {isStaff && !isPaid && <button onClick={() => handleOpenPayment(inv)} className="flex-1 min-w-28 px-3 py-2 bg-emerald-600 text-white hover:bg-emerald-700 rounded-lg text-xs font-bold transition-all cursor-pointer">Collect payment</button>}
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+          <div className="hidden md:block bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden shadow-sm print:hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs border-collapse">
               <thead>
@@ -260,18 +292,18 @@ export default function BillingManager({ userRole }: BillingManagerProps) {
                 })}
               </tbody>
             </table>
-          </div>
-        </div>
+          </div></div>
+        </>
       )}
 
       {/* 3. Styled Receipt slip Modal with Print trigger */}
       {activeInvoice && !paymentOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-sm print:bg-white print:p-0 print:absolute print:inset-0">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-slate-900/60 backdrop-blur-sm print:bg-white print:p-0 print:absolute print:inset-0">
           <div onClick={() => setActiveInvoice(null)} className="fixed inset-0 bg-transparent print:hidden" />
           
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 w-full max-w-lg rounded-2xl shadow-2xl relative z-10 overflow-hidden flex flex-col print:border-none print:shadow-none print:w-full print:h-full print:rounded-none">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 w-full max-w-lg max-h-[calc(100dvh-1.5rem)] rounded-2xl shadow-2xl relative z-10 overflow-hidden flex flex-col print:border-none print:shadow-none print:w-full print:h-full print:rounded-none">
             {/* Control Bar */}
-            <div className="flex justify-between items-center p-4 bg-slate-50 dark:bg-slate-950 border-b border-slate-200 dark:border-slate-800 print:hidden">
+            <div className="flex flex-wrap justify-between items-center gap-2 p-3 sm:p-4 bg-slate-50 dark:bg-slate-950 border-b border-slate-200 dark:border-slate-800 print:hidden">
               <span className="text-xs font-bold text-slate-500 uppercase tracking-widest">Financial Invoice Receipt</span>
               <div className="flex gap-2">
                 <button
@@ -279,6 +311,12 @@ export default function BillingManager({ userRole }: BillingManagerProps) {
                   className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg bg-emerald-600 px-3 text-xs font-bold text-white shadow-sm hover:bg-emerald-700 active:scale-95 transition-all cursor-pointer"
                 >
                   <Printer className="h-3.5 w-3.5" /> Print Receipt
+                </button>
+                <button
+                  onClick={() => downloadInvoice(activeInvoice)}
+                  className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-emerald-600 px-3 text-xs font-bold text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 active:scale-95 transition-all cursor-pointer"
+                >
+                  <Download className="h-3.5 w-3.5" /> Download
                 </button>
                 <button
                   onClick={() => setActiveInvoice(null)}
@@ -290,7 +328,7 @@ export default function BillingManager({ userRole }: BillingManagerProps) {
             </div>
 
             {/* Printable Invoice Page */}
-            <div className="p-8 flex-1 overflow-y-auto space-y-6 bg-white dark:bg-slate-900 text-slate-900 print:overflow-visible print:p-0">
+            <div className="p-4 sm:p-8 flex-1 overflow-y-auto space-y-6 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 print:overflow-visible print:p-0">
               {/* Header block */}
               <div className="flex justify-between items-start border-b-2 border-emerald-600 pb-6">
                 <div>
@@ -310,14 +348,14 @@ export default function BillingManager({ userRole }: BillingManagerProps) {
               </div>
 
               {/* Demographics */}
-              <div className="grid grid-cols-2 gap-6 text-xs bg-slate-50 dark:bg-slate-950 p-4 border rounded-xl print:bg-slate-50/20">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6 text-xs bg-slate-50 dark:bg-slate-950 p-4 border rounded-xl print:bg-slate-50/20">
                 <div className="space-y-1">
                   <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Billed To (Patient)</span>
                   <p className="font-bold text-slate-800 dark:text-slate-200">{activeInvoice.patient.firstName} {activeInvoice.patient.lastName}</p>
                   <p className="text-[10px]">MRN: <span className="font-mono">{activeInvoice.patient.mrn}</span></p>
                   <p className="text-[10px]">{activeInvoice.patient.phone || 'No phone'}</p>
                 </div>
-                <div className="space-y-1 text-right">
+                <div className="space-y-1 sm:text-right">
                   <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Due Date</span>
                   <p className="font-bold text-slate-800 dark:text-slate-200">{new Date(activeInvoice.dueDate).toLocaleDateString()}</p>
                   <span className={`inline-block mt-2 px-2 py-0.5 rounded text-[10px] font-bold ${

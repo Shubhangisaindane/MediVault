@@ -5,6 +5,7 @@ import {
   FileText, 
   Plus, 
   Printer, 
+  Download,
   X, 
   Loader2, 
   AlertCircle,
@@ -13,6 +14,7 @@ import {
   Trash2
 } from 'lucide-react';
 import axios from 'axios';
+import { downloadDocument, escapeHtml } from '@/lib/document-download';
 
 type PrescriptionItem = {
   id: string;
@@ -168,10 +170,20 @@ export default function PrescriptionList({ userRole }: PrescriptionListProps) {
     window.print();
   };
 
+  const downloadPrescription = (prescription: Prescription) => {
+    const items = prescription.items.map((item) => `
+      <tr><td><strong>${escapeHtml(item.medicine.name)}</strong><div class="muted">${escapeHtml(item.medicine.category || 'General Pharma')}</div></td><td>${escapeHtml(item.dosage)}</td><td>${escapeHtml(item.frequency)}</td><td>${escapeHtml(item.duration)}</td></tr>`).join('');
+    downloadDocument(
+      `medivault-prescription-${prescription.id.slice(0, 8)}.html`,
+      'MediVault Prescription',
+      `<h1>MediVault Clinic</h1><p class="muted">742 Health Blvd, Medical Center Hub · support@medivault.com</p><h2>Prescription · #${escapeHtml(prescription.id.slice(0, 8).toUpperCase())}</h2><div class="grid"><div><strong>Patient</strong><br>${escapeHtml(`${prescription.patient.firstName} ${prescription.patient.lastName}`)}<br><span class="muted">MRN: ${escapeHtml(prescription.patient.mrn)}</span></div><div><strong>Prescribing physician</strong><br>Dr. ${escapeHtml(`${prescription.doctor.firstName} ${prescription.doctor.lastName}`)}<br><span class="muted">${escapeHtml(prescription.doctor.specialization)}</span></div></div><table><thead><tr><th>Medicine</th><th>Dosage</th><th>Frequency</th><th>Duration</th></tr></thead><tbody>${items}</tbody></table>${prescription.instructions ? `<h2>Instructions</h2><p>${escapeHtml(prescription.instructions)}</p>` : ''}<p class="muted">Issued ${escapeHtml(new Date(prescription.createdAt).toLocaleDateString())}</p>`
+    );
+  };
+
   return (
     <div className="space-y-6">
       {/* 1. Header controls */}
-      <div className="flex justify-between items-center print:hidden">
+      <div className="flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-center print:hidden">
         <div>
           <h1 className="text-2xl font-black tracking-tight">Prescriptions Folder</h1>
           <p className="text-slate-500 text-xs mt-0.5">Explore pharmacy records, dosage frequencies, and export prescription sheets.</p>
@@ -263,12 +275,12 @@ export default function PrescriptionList({ userRole }: PrescriptionListProps) {
 
       {/* 3. Detailed slip modal with print triggers */}
       {activePresc && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-sm print:bg-white print:p-0 print:absolute print:inset-0">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-slate-900/60 backdrop-blur-sm print:bg-white print:p-0 print:absolute print:inset-0">
           <div onClick={() => setActivePresc(null)} className="fixed inset-0 bg-transparent print:hidden" />
           
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 w-full max-w-xl rounded-2xl shadow-2xl relative z-10 overflow-hidden flex flex-col print:border-none print:shadow-none print:w-full print:h-full print:rounded-none">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 w-full max-w-xl max-h-[calc(100dvh-1.5rem)] rounded-2xl shadow-2xl relative z-10 overflow-hidden flex flex-col print:border-none print:shadow-none print:w-full print:h-full print:rounded-none">
             {/* Modal Controls */}
-            <div className="flex justify-between items-center p-4 bg-slate-50 dark:bg-slate-950 border-b border-slate-200 dark:border-slate-800 print:hidden">
+            <div className="flex flex-wrap justify-between items-center gap-2 p-3 sm:p-4 bg-slate-50 dark:bg-slate-950 border-b border-slate-200 dark:border-slate-800 print:hidden">
               <span className="text-xs font-bold text-slate-500 uppercase tracking-widest">Prescription Sheet</span>
               <div className="flex gap-2">
                 <button
@@ -276,6 +288,12 @@ export default function PrescriptionList({ userRole }: PrescriptionListProps) {
                   className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg bg-emerald-600 px-3 text-xs font-bold text-white shadow-sm hover:bg-emerald-700 active:scale-95 transition-all cursor-pointer"
                 >
                   <Printer className="h-3.5 w-3.5" /> Print / PDF
+                </button>
+                <button
+                  onClick={() => downloadPrescription(activePresc)}
+                  className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-emerald-600 px-3 text-xs font-bold text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 active:scale-95 transition-all cursor-pointer"
+                >
+                  <Download className="h-3.5 w-3.5" /> Download
                 </button>
                 <button
                   onClick={() => setActivePresc(null)}
@@ -287,7 +305,7 @@ export default function PrescriptionList({ userRole }: PrescriptionListProps) {
             </div>
 
             {/* Printable Area */}
-            <div className="p-8 flex-1 overflow-y-auto space-y-6 bg-white dark:bg-slate-900 text-slate-900 print:overflow-visible print:p-0">
+            <div className="p-4 sm:p-8 flex-1 overflow-y-auto space-y-6 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 print:overflow-visible print:p-0">
               {/* Header */}
               <div className="flex justify-between items-start border-b-2 border-emerald-600 pb-6">
                 <div>
@@ -311,8 +329,8 @@ export default function PrescriptionList({ userRole }: PrescriptionListProps) {
               </div>
 
               {/* Patient & Doctor Demographics */}
-              <div className="grid grid-cols-2 gap-6 text-xs bg-slate-50 dark:bg-slate-950 p-4 border rounded-xl print:bg-slate-50/20">
-                <div className="space-y-1 border-r border-slate-200/50 dark:border-slate-800/50 pr-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6 text-xs bg-slate-50 dark:bg-slate-950 p-4 border rounded-xl print:bg-slate-50/20">
+                <div className="space-y-1 sm:border-r border-slate-200/50 dark:border-slate-800/50 sm:pr-4">
                   <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Patient Folder</span>
                   <p className="font-bold text-slate-800 dark:text-slate-200">{activePresc.patient.firstName} {activePresc.patient.lastName}</p>
                   <p className="text-[10px]">MRN: <span className="font-mono">{activePresc.patient.mrn}</span></p>

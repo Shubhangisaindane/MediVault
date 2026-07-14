@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getSessionUser } from '@/lib/auth';
+import { normalizeEmail, normalizePhone } from '@/lib/validation';
 
 // 1. GET - Query Patients (Search, Filter, Sort, Paginate)
 export async function GET(request: Request) {
@@ -111,6 +112,15 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Required fields are missing' }, { status: 400 });
     }
 
+    const normalizedEmail = email ? normalizeEmail(email) : null;
+    if (email && !normalizedEmail) {
+      return NextResponse.json({ error: 'Enter a valid email address.' }, { status: 400 });
+    }
+    const normalizedPhone = normalizePhone(phone);
+    if (phone !== undefined && phone !== null && phone !== '' && !normalizedPhone) {
+      return NextResponse.json({ error: 'Enter a valid phone number with 7 to 15 digits.' }, { status: 400 });
+    }
+
     // Generate unique MRN
     let mrn = '';
     let isUnique = false;
@@ -135,8 +145,8 @@ export async function POST(request: Request) {
           lastName,
           dateOfBirth: new Date(dateOfBirth),
           sex,
-          phone,
-          email: email ? email.toLowerCase() : null,
+          phone: normalizedPhone,
+          email: normalizedEmail,
           address,
           createdById: sessionUser.id
         }

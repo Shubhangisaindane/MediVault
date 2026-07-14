@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { hashPassword, getSessionUser } from '@/lib/auth';
 import { Role } from '@prisma/client';
+import { normalizeEmail, normalizePhone } from '@/lib/validation';
 
 export async function POST(req: NextRequest) {
   try {
@@ -27,7 +28,10 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const normalizedEmail = email.trim().toLowerCase();
+    const normalizedEmail = normalizeEmail(email);
+    if (!normalizedEmail) {
+      return NextResponse.json({ error: 'Enter a valid email address.' }, { status: 400 });
+    }
 
     const existing = await db.user.findUnique({ where: { email: normalizedEmail } });
     if (existing) {
@@ -47,6 +51,11 @@ export async function POST(req: NextRequest) {
         );
       }
 
+      const normalizedPhone = normalizePhone(phone);
+      if (phone !== undefined && phone !== null && phone !== '' && !normalizedPhone) {
+        return NextResponse.json({ error: 'Enter a valid phone number with 7 to 15 digits.' }, { status: 400 });
+      }
+
       const doctor = await db.doctor.create({
         data: {
           firstName,
@@ -54,7 +63,7 @@ export async function POST(req: NextRequest) {
           specialization,
           department,
           email: normalizedEmail,
-          phone: phone || null,
+          phone: normalizedPhone,
           availability: availability || {},
         },
       });
